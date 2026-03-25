@@ -177,6 +177,50 @@ curl -s http://192.168.1.103:11434/api/tags | python3 -m json.tool
 
 ---
 
+## Benchmark: qwen3:14b vs Claude Sonnet 4.6
+
+> **Note:** This is a simple, single-task benchmark meant to give a rough sense of speed and output style — not a comprehensive evaluation. Results will vary depending on GPU, network, and prompt complexity.
+
+### Setup
+- **Date:** 2026-03-25
+- **Client:** MacBook Pro (Apple Silicon), running aider locally
+- **Server:** Windows PC with dedicated GPU (~19 GB VRAM used), Ollama on LAN
+- **Claude:** Sonnet 4.6 via Vertex AI (GCP, europe-west1)
+- **Ollama:** qwen3:14b with `think=false` via native Ollama API
+- **Script:** `benchmark.py` in this repo (sends same prompt to both in parallel)
+
+### Prompt used
+```
+Write a Kotlin function that:
+1. Takes a list of integers
+2. Returns a map where keys are "even" and "odd"
+3. Each key maps to the sum of numbers in that category
+4. Handle empty list gracefully
+
+Include a brief docstring and one usage example in a comment.
+```
+
+### Results
+
+| | Claude Sonnet 4.6 (Vertex AI) | qwen3:14b (Ollama, think=off) |
+|---|---|---|
+| Time to first token | 2 443 ms | **304 ms** |
+| Total time | 14 716 ms | 15 849 ms |
+| Output tokens | ~950 | ~190 |
+
+### Output quality
+Both models produced correct, idiomatic Kotlin. The difference was in verbosity:
+
+- **qwen3:14b** — 5 lines, minimal and clean. Gets straight to the point.
+- **Claude Sonnet 4.6** — more thorough: edge cases, design decisions table, ASCII flow diagram.
+
+### Takeaway
+For the **editor role in aider** (fast code generation), `qwen3:14b` with thinking disabled is a strong choice — comparable total speed to Claude, faster to first token, and produces clean code. Claude's advantage is depth and thoroughness, which matters more for complex reasoning than for routine edits.
+
+`qwen3:32b` with thinking enabled was tested and found impractical for this use case — time to first token exceeded 60 seconds even for trivial prompts.
+
+---
+
 # PART 2: CLIENT SETUP (MAC)
 
 ## 1. Install Aider
