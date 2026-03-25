@@ -17,7 +17,7 @@ Paid AI APIs (Claude, GPT-4, etc.) are powerful but cost money and send your cod
 
 ## How it works
 
-[Aider](https://aider.chat) is an open-source AI coding assistant that runs in your terminal. It works with any OpenAI-compatible API — including Ollama, which lets you run LLMs locally.
+[Aider](https://aider.chat) is an open-source AI coding assistant that runs in your terminal. It works with any OpenAI-compatible API — including [Ollama](https://ollama.com), which lets you run LLMs locally.
 
 ```
 [ Your laptop ]  ──── local network ────  [ GPU machine ]
@@ -47,7 +47,9 @@ Paid AI APIs (Claude, GPT-4, etc.) are powerful but cost money and send your cod
 
 ## Install Ollama
 
-**Windows:** Download from `https://ollama.com/download/windows` — installs as a background service.
+Ollama documentation: [ollama.com](https://ollama.com) · [Model library](https://ollama.com/library)
+
+**Windows:** Download from [ollama.com/download/windows](https://ollama.com/download/windows) — installs as a background service.
 
 **macOS:**
 ```bash
@@ -168,6 +170,8 @@ Note this IP — you'll use it in the client config.
 
 ## Install Aider
 
+Aider documentation: [aider.chat](https://aider.chat) · [Configuration reference](https://aider.chat/docs/config/aider_conf.html)
+
 ```bash
 brew install aider
 aider --version   # verify
@@ -263,6 +267,8 @@ This loads `src/` automatically if it exists, otherwise the entire project root 
 ---
 
 # Alternative Client: Claude Code via Ollama
+
+Claude Code documentation: [code.claude.com/docs](https://code.claude.com/docs) · [Installation guide](https://code.claude.com/docs/en/getting-started) · [ollama launch blog post](https://ollama.com/blog/launch)
 
 Since January 2026, Ollama implements Anthropic's Messages API. This means you can run Claude Code — Anthropic's official CLI — backed by local models instead of paid API access.
 
