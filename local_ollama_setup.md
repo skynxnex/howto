@@ -350,7 +350,9 @@ Then run `ollama launch claude` as normal. Delete `settings.local.json` when you
 
 # Part 3: Usage
 
-## Starting a session
+## Aider
+
+### Starting a session
 
 ```bash
 cd your-project
@@ -359,7 +361,7 @@ aider-local
 
 All source files are loaded. You can start describing what you want to build or fix.
 
-## The workflow
+### The workflow
 
 1. Describe your task
 2. **Architect** (DeepSeek-R1) thinks through the problem and presents a plan
@@ -367,7 +369,7 @@ All source files are loaded. You can start describing what you want to build or 
 4. **Editor** (Qwen3) writes the code
 5. Aider asks if you want to commit — your choice
 
-## Useful commands inside aider
+### Useful commands inside aider
 
 | Command | What it does |
 |---|---|
@@ -377,6 +379,39 @@ All source files are loaded. You can start describing what you want to build or 
 | `/diff` | Show what was changed |
 | `/undo` | Undo the last code change |
 | `/model <name>` | Switch model mid-session |
+| `/exit` | Quit |
+
+---
+
+## Claude Code
+
+### Starting a session
+
+```bash
+cd your-project
+OLLAMA_HOST=http://YOUR_SERVER_IP:11434 ollama launch claude
+```
+
+Claude Code starts with the model you selected. It automatically maps your project directory and can read, edit, and create files.
+
+### The workflow
+
+Claude Code works differently from Aider — there's no separate architect/editor split. Instead:
+
+1. Describe what you want to build or fix
+2. Claude Code reads the relevant files and proposes changes
+3. You review and approve each edit before it's applied
+4. Run tests or commands directly from the chat if needed
+
+### Useful commands inside Claude Code
+
+| Command | What it does |
+|---|---|
+| `/init` | Generate a CLAUDE.md with project instructions (may not work on all models) |
+| `/clear` | Clear conversation history |
+| `/diff` | Show pending changes |
+| `/undo` | Revert the last change |
+| `/model` | Switch model |
 | `/exit` | Quit |
 
 ---
