@@ -321,7 +321,26 @@ This command:
 - Configures Claude Code to use Ollama's Anthropic-compatible API
 - Starts Claude Code — no manual environment variables or config files needed
 
-When prompted, select a model. `phi4:14b` is the recommended choice based on benchmark results (see Part 4).
+When prompted, select a model. See the note below about creating a `qwen3-fast` variant before launching.
+
+## Recommended: create qwen3-fast before launching
+
+`qwen3:14b` defaults to thinking mode — it reasons internally before responding, which adds minutes of latency even for simple questions. Create a custom variant with thinking disabled on the server before using it with Claude Code:
+
+```bash
+ollama create qwen3-fast -f - <<'EOF'
+FROM qwen3:14b
+PARAMETER think false
+EOF
+```
+
+Then launch Claude Code with that model:
+
+```bash
+OLLAMA_HOST=http://YOUR_SERVER_IP:11434 ollama launch claude --model qwen3-fast
+```
+
+`phi4:14b` is the better choice for complex coding tasks (see Part 4), but doesn't require this workaround.
 
 ## Known limitations
 
