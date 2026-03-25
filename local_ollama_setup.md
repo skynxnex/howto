@@ -1,15 +1,25 @@
 # LOCAL AI DEPLOYMENT SETUP (AIDER + OLLAMA)
 
-This document serves as the single point of truth for configuring a friction-free local AI development environment — a Mac client talking to a remote GPU server running Ollama.
+This document serves as the single point of truth for configuring a local AI development environment using Aider and Ollama — without needing a paid API subscription.
+
+The primary goal is to let you run AI models on a more powerful machine (a desktop, gaming PC, or Mac Mini with enough RAM) while keeping your development workflow on your everyday laptop. This way the laptop's resources are left untouched while the heavy lifting happens elsewhere.
+
+**That said, this works just as well on a single machine.** If you want to run both Ollama and Aider on the same computer, simply point `openai-api-base` to `http://localhost:11434/v1` instead of a remote IP.
 
 ---
 
 ## ARCHITECTURE OVERVIEW
 
 ```
-[ Mac Client ]  ──── local network ────  [ GPU Server (Windows or Mac Mini) ]
-  aider                                    ollama + models
-  ~/.aider.conf.yml                        port 11434 exposed on LAN
+[ Mac Client (laptop) ]  ──── local network ────  [ GPU Server (Windows or Mac Mini) ]
+  aider                                              ollama + models
+  ~/.aider.conf.yml                                  port 11434 exposed on LAN
+  lightweight, no GPU needed                         does all the AI computation
+
+
+[ Single machine setup (optional) ]
+  aider + ollama running on the same computer
+  openai-api-base: http://localhost:11434/v1
 ```
 
 ---
