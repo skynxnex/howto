@@ -262,6 +262,64 @@ This loads `src/` automatically if it exists, otherwise the entire project root 
 
 ---
 
+# Alternative Client: Claude Code via Ollama
+
+Since January 2026, Ollama implements Anthropic's Messages API. This means you can run Claude Code — Anthropic's official CLI — backed by local models instead of paid API access.
+
+**What you get:** The full Claude Code experience (file editing, bash commands, multi-file context, tool use) running on free local models.
+
+**What you need:** The Ollama CLI installed on the client machine. It doesn't need to run models locally — it just acts as a launcher that configures Claude Code to talk to your server.
+
+## Install
+
+```bash
+# Mac
+brew install ollama
+
+# Linux
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Windows
+# Download from ollama.com/download/windows
+```
+
+You do **not** need to start the Ollama service locally — you're only using it as a CLI tool to launch Claude Code.
+
+## Launch
+
+```bash
+OLLAMA_HOST=http://YOUR_SERVER_IP:11434 ollama launch claude
+```
+
+This command:
+- Connects to your Ollama server
+- Shows available models to choose from
+- Configures Claude Code to use Ollama's Anthropic-compatible API
+- Starts Claude Code — no manual environment variables or config files needed
+
+When prompted, select a model. `phi4:14b` is the recommended choice based on benchmark results (see Part 4).
+
+## Note: conflict with existing Claude Code setups
+
+If you already have Claude Code configured to use a paid API (Anthropic or Vertex AI), those settings may override what `ollama launch` sets up. On a fresh machine with no prior Claude Code configuration, it works without any extra steps.
+
+If you have an existing setup and want to override it temporarily, create `~/.claude/settings.local.json`:
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_USE_VERTEX": "",
+    "ANTHROPIC_VERTEX_PROJECT_ID": "",
+    "ANTHROPIC_BASE_URL": "http://YOUR_SERVER_IP:11434",
+    "ANTHROPIC_AUTH_TOKEN": "ollama"
+  }
+}
+```
+
+Then run `ollama launch claude` as normal. Delete `settings.local.json` when you want to switch back.
+
+---
+
 # Part 3: Usage
 
 ## Starting a session
