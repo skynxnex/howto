@@ -1,22 +1,71 @@
-# Benchmark Results — 2026-03-25 12:28
+# Benchmark Results — 2026-03-25 13:08
 
 ## Prompt
-```
-Write a Kotlin function that:
-1. Takes a list of integers
-2. Returns a map where keys are "even" and "odd"
-3. Each key maps to the sum of numbers in that category
-4. Handle empty list gracefully
+```kotlin
+You are working in an existing Kotlin Spring Boot service. Here is the relevant code:
 
-Include a brief docstring and one usage example in a comment.
+```kotlin
+// Existing domain types
+data class Offer(val id: Long, val dealerId: Long, val vehicleId: Long, val status: OfferStatus)
+enum class OfferStatus { ACTIVE, SOLD, REMOVED }
+data class SyncResult(val synced: Int, val failed: List<Long>, val skipped: Int)
+
+// Existing repository — use these methods, do not modify
+@Repository
+class OfferRepository(private val jdbcTemplate: NamedParameterJdbcTemplate) {
+    fun findByDealerId(dealerId: Long): List<Offer> { ... }
+    fun findById(id: Long): Offer? { ... }
+    fun updateStatus(id: Long, status: OfferStatus): Boolean { ... }
+    fun bulkUpdateStatus(ids: List<Long>, status: OfferStatus): Int { ... }
+}
+
+// Existing external client — use as-is
+@Component
+class VehicleApiClient {
+    fun fetchActiveVehicleIds(dealerId: Long): Set<Long>   // throws VehicleApiException on failure
+    fun isVehicleSold(vehicleId: Long): Boolean            // throws VehicleApiException on failure
+}
+
+// Existing exception types
+class VehicleApiException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+class SyncException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+```
+
+Implement a `syncDealerOffers(dealerId: Long): SyncResult` method for the following service class:
+
+```kotlin
+@Service
+class OfferSyncService(
+    private val offerRepository: OfferRepository,
+    private val vehicleApiClient: VehicleApiClient,
+    private val logger: Logger = LoggerFactory.getLogger(OfferSyncService::class.java)
+) {
+    // implement here
+}
+```
+
+Requirements:
+1. Fetch current offers for the dealer from the repository
+2. Fetch active vehicle IDs from the external API — if this call fails, throw SyncException
+3. For each ACTIVE offer:
+   - If its vehicleId is NOT in the active set, check if the vehicle is sold via the API
+   - If sold → mark offer as SOLD; if not → mark as REMOVED
+   - If the API call for a single vehicle fails, log a warning and add the offer ID to `failed` — do not abort the whole sync
+4. Offers already SOLD or REMOVED → count as skipped, do not touch them
+5. Use bulkUpdateStatus where possible to minimize DB calls
+6. Return a SyncResult with counts
+7. No explanation, just the method
 ```
 
 ## Speed Summary
 
 | | Time to first token | Total time | Output tokens |
 |---|---|---|---|
-| Claude Sonnet 4.6 (Vertex AI) | 2443 ms | 14716 ms | ~951 |
-| qwen3:14b (Ollama remote, think=off) | 304 ms | 15849 ms | ~188 |
+| Claude Sonnet 4.6 (Vertex AI) | 1377 ms | 6299 ms | ~531 |
+| qwen3:8b  (think=on)  | 789631 ms | 803790 ms | ~367 |
+| qwen3:14b (think=off) | 2930 ms | 30464 ms | ~326 |
+| qwen3:14b (think=on)  | 302007 ms | 336652 ms | ~370 |
+| qwen3:32b (think=off) | 349556 ms | 483339 ms | ~484 |
 
 ---
 
@@ -24,111 +73,276 @@ Include a brief docstring and one usage example in a comment.
 
 ```kotlin
 ```kotlin
-/**
- * Partitions a list of integers into even and odd categories,
- * returning the sum of each category.
- *
- * @param numbers The list of integers to process.
- * @return A map with keys "even" and "odd", each mapping to the
- *         sum of numbers in that category. Returns 0 for both
- *         keys if the list is empty.
- *
- * Usage example:
- *   val result = sumByParity(listOf(1, 2, 3, 4, 5))
- *   // result => {"even"=6, "odd"=9}
- */
-fun sumByParity(numbers: List<Int>): Map<String, Int> {
-    // Handle empty list gracefully by providing default value of 0
-    if (numbers.isEmpty()) {
-        return mapOf("even" to 0, "odd" to 0)
+fun syncDealerOffers(dealerId: Long): SyncResult {
+    val offers = offerRepository.findByDealerId(dealerId)
+
+    val activeVehicleIds = try {
+        vehicleApiClient.fetchActiveVehicleIds(dealerId)
+    } catch (e: VehicleApiException) {
+        throw SyncException("Failed to fetch active vehicle IDs for dealer $dealerId", e)
     }
 
-    return numbers
-        .groupBy { if (it % 2 == 0) "even" else "odd" }
-        .mapValues { (_, nums) -> nums.sum() }
-        .withDefault { 0 }  // Ensures both keys exist even if one category is absent
-        .let { map ->
-            mapOf(
-                "even" to (map["even"] ?: 0),
-                "odd" to (map["odd"] ?: 0)
-            )
+    val skipped = offers.count { it.status != OfferStatus.ACTIVE }
+    val activeOffers = offers.filter { it.status == OfferStatus.ACTIVE }
+
+    val offersToCheck = activeOffers.filter { it.vehicleId !in activeVehicleIds }
+    val stillActiveOffers = activeOffers.filter { it.vehicleId in activeVehicleIds }
+
+    val toMarkSold = mutableListOf<Long>()
+    val toMarkRemoved = mutableListOf<Long>()
+    val failed = mutableListOf<Long>()
+
+    for (offer in offersToCheck) {
+        try {
+            val sold = vehicleApiClient.isVehicleSold(offer.vehicleId)
+            if (sold) {
+                toMarkSold.add(offer.id)
+            } else {
+                toMarkRemoved.add(offer.id)
+            }
+        } catch (e: VehicleApiException) {
+            logger.warn("Failed to check sold status for vehicle ${offer.vehicleId} (offer ${offer.id}): ${e.message}", e)
+            failed.add(offer.id)
         }
-}
+    }
 
-fun main() {
-    // Basic usage
-    val mixed = sumByParity(listOf(1, 2, 3, 4, 5))
-    println("Mixed list:  $mixed")  // {even=6, odd=9}
+    var syncedCount = 0
 
-    // All even numbers
-    val allEven = sumByParity(listOf(2, 4, 6, 8))
-    println("All even:    $allEven")  // {even=20, odd=0}
+    if (toMarkSold.isNotEmpty()) {
+        syncedCount += offerRepository.bulkUpdateStatus(toMarkSold, OfferStatus.SOLD)
+    }
 
-    // All odd numbers
-    val allOdd = sumByParity(listOf(1, 3, 5, 7))
-    println("All odd:     $allOdd")  // {even=0, odd=16}
+    if (toMarkRemoved.isNotEmpty()) {
+        syncedCount += offerRepository.bulkUpdateStatus(toMarkRemoved, OfferStatus.REMOVED)
+    }
 
-    // Empty list
-    val empty = sumByParity(emptyList())
-    println("Empty list:  $empty")  // {even=0, odd=0}
-
-    // Negative numbers
-    val withNegatives = sumByParity(listOf(-3, -2, -1, 0, 1, 2, 3))
-    println("Negatives:   $withNegatives")  // {even=0, odd=0}
-
-    // Single element
-    val single = sumByParity(listOf(7))
-    println("Single item: $single")  // {even=0, odd=7}
+    return SyncResult(
+        synced = syncedCount,
+        failed = failed,
+        skipped = skipped
+    )
 }
 ```
-
-### Key Design Decisions
-
-| Decision | Reason |
-|---|---|
-| Always return both keys | Avoids null checks for callers; consistent contract |
-| Default value of `0` | Mathematically correct (sum of empty set = 0) |
-| `groupBy` + `mapValues` | Idiomatic Kotlin, clean and readable |
-| Early return for empty list | Explicit and clear intent |
-
-### How It Works
-
-```
-Input: [1, 2, 3, 4, 5]
-         │
-         ▼
-groupBy  → { "odd" = [1, 3, 5], "even" = [2, 4] }
-         │
-         ▼
-mapValues→ { "odd" = 9,         "even" = 6      }
-         │
-         ▼
-Output:  { "even" = 6, "odd" = 9 }
 ```
 
-> **Note on negative numbers:** `%` in Kotlin can return negative remainders (e.g., `-3 % 2 == -1`), so the check `it % 2 == 0` still correctly identifies even numbers since only `0` signals evenness.
-```
-
-## qwen3:14b (Ollama remote, think=off)
+## qwen3:8b  (think=on) 
 
 ```kotlin
 ```kotlin
-/**
- * Groups integers in a list into even and odd categories and returns the sum for each.
- * Handles empty lists by returning zero sums for both categories.
- *
- * @param numbers A list of integers to be categorized and summed.
- * @return A map with keys "even" and "odd" mapping to their respective sums.
- */
-fun sumEvenAndOdd(numbers: List<Int>): Map<String, Int> {
-    val evenSum = numbers.filter { it % 2 == 0 }.sum()
-    val oddSum = numbers.filter { it % 2 != 0 }.sum()
-    return mapOf("even" to evenSum, "odd" to oddSum)
-}
+@Service
+class OfferSyncService(
+    private val offerRepository: OfferRepository,
+    private val vehicleApiClient: VehicleApiClient,
+    private val logger: Logger = LoggerFactory.getLogger(OfferSyncService::class.java)
+) {
+    fun syncDealerOffers(dealerId: Long): SyncResult {
+        val offers = offerRepository.findByDealerId(dealerId)
+        return try {
+            val activeVehicles = vehicleApiClient.fetchActiveVehicleIds(dealerId)
+            val soldIds = mutableListOf<Long>()
+            val removedIds = mutableListOf<Long>()
+            val failed = mutableListOf<Long>()
 
-// Example usage:
-// val result = sumEvenAndOdd(listOf(1, 2, 3, 4, 5))
-// println(result) // Output: {even=6, odd=9}
+            for (offer in offers) {
+                if (offer.status == OfferStatus.ACTIVE) {
+                    val vehicleId = offer.vehicleId
+                    if (!activeVehicles.contains(vehicleId)) {
+                        try {
+                            val isSold = vehicleApiClient.isVehicleSold(vehicleId)
+                            if (isSold) {
+                                soldIds.add(offer.id)
+                            } else {
+                                removedIds.add(offer.id)
+                            }
+                        } catch (e: VehicleApiException) {
+                            logger.warn("Failed to check if vehicle $vehicleId is sold for offer ${offer.id}", e)
+                            failed.add(offer.id)
+                        }
+                    }
+                }
+            }
+
+            val soldCount = offerRepository.bulkUpdateStatus(soldIds, OfferStatus.SOLD)
+            val removedCount = offerRepository.bulkUpdateStatus(removedIds, OfferStatus.REMOVED)
+            val synced = soldCount + removedCount
+            val failedList = failed.toList()
+            val skipped = offers.size - synced - failedList.size
+
+            SyncResult(synced, failedList, skipped)
+        } catch (e: VehicleApiException) {
+            throw SyncException("Failed to fetch active vehicle IDs for dealer $dealerId", e)
+        }
+    }
+}
+```
+```
+
+## qwen3:14b (think=off)
+
+```kotlin
+```kotlin
+fun syncDealerOffers(dealerId: Long): SyncResult {
+    val offers = offerRepository.findByDealerId(dealerId)
+    val activeVehicleIds: Set<Long> = try {
+        vehicleApiClient.fetchActiveVehicleIds(dealerId)
+    } catch (e: VehicleApiException) {
+        throw SyncException("Failed to fetch active vehicle IDs for dealer $dealerId", e)
+    }
+
+    val toUpdate: MutableList<Pair<Long, OfferStatus>> = mutableListOf()
+    val failed: MutableList<Long> = mutableListOf()
+    var skipped = 0
+
+    for (offer in offers) {
+        when (offer.status) {
+            OfferStatus.SOLD, OfferStatus.REMOVED -> skipped++
+            OfferStatus.ACTIVE -> {
+                if (offer.vehicleId !in activeVehicleIds) {
+                    try {
+                        val isSold = vehicleApiClient.isVehicleSold(offer.vehicleId)
+                        val newStatus = if (isSold) OfferStatus.SOLD else OfferStatus.REMOVED
+                        toUpdate.add(Pair(offer.id, newStatus))
+                    } catch (e: VehicleApiException) {
+                        logger.warn("Failed to check vehicle status for vehicle ID ${offer.vehicleId}: ${e.message}", e)
+                        failed.add(offer.id)
+                    }
+                }
+            }
+        }
+    }
+
+    val groupedUpdates = toUpdate.groupBy { it.second }.mapValues { it.value.map { it.first } }
+    val updatedCount = groupedUpdates.values.sumOf { offerRepository.bulkUpdateStatus(it, it.first) }
+
+    return SyncResult(updatedCount, failed, skipped)
+}
+```
+```
+
+## qwen3:14b (think=on) 
+
+```kotlin
+```kotlin
+@Service
+class OfferSyncService(
+    private val offerRepository: OfferRepository,
+    private val vehicleApiClient: VehicleApiClient,
+    private val logger: Logger = LoggerFactory.getLogger(OfferSyncService::class.java)
+) {
+    fun syncDealerOffers(dealerId: Long): SyncResult {
+        val offers = offerRepository.findByDealerId(dealerId)
+        val activeVehicleIds: Set<Long>
+
+        try {
+            activeVehicleIds = vehicleApiClient.fetchActiveVehicleIds(dealerId)
+        } catch (e: VehicleApiException) {
+            throw SyncException("Failed to fetch active vehicle IDs for dealer $dealerId", e)
+        }
+
+        val soldIds = mutableListOf<Long>()
+        val removedIds = mutableListOf<Long>()
+        val failed = mutableListOf<Long>()
+        var skipped = 0
+
+        for (offer in offers) {
+            if (offer.status != OfferStatus.ACTIVE) {
+                skipped++
+                continue
+            }
+
+            val vehicleId = offer.vehicleId
+            if (activeVehicleIds.contains(vehicleId)) {
+                skipped++
+                continue
+            }
+
+            try {
+                val isSold = vehicleApiClient.isVehicleSold(vehicleId)
+                if (isSold) {
+                    soldIds.add(offer.id)
+                } else {
+                    removedIds.add(offer.id)
+                }
+            } catch (e: VehicleApiException) {
+                logger.warn("Failed to check vehicle sold status for vehicleId $vehicleId", e)
+                failed.add(offer.id)
+            }
+        }
+
+        val soldCount = offerRepository.bulkUpdateStatus(soldIds, OfferStatus.SOLD)
+        val removedCount = offerRepository.bulkUpdateStatus(removedIds, OfferStatus.REMOVED)
+        val synced = soldCount + removedCount
+
+        return SyncResult(synced, failed.toList(), skipped)
+    }
+}
+```
+```
+
+## qwen3:32b (think=off)
+
+```kotlin
+```kotlin
+@Service
+class OfferSyncService(
+    private val offerRepository: OfferRepository,
+    private val vehicleApiClient: VehicleApiClient,
+    private val logger: Logger = LoggerFactory.getLogger(OfferSyncService::class.java)
+) {
+    fun syncDealerOffers(dealerId: Long): SyncResult {
+        // Step 1: Fetch current offers for the dealer
+        val offers = offerRepository.findByDealerId(dealerId)
+        val activeOffers = offers.filter { it.status == OfferStatus.ACTIVE }
+        
+        // Step 2: Fetch active vehicle IDs from the API
+        val activeVehicleIds: Set<Long>
+        try {
+            activeVehicleIds = vehicleApiClient.fetchActiveVehicleIds(dealerId)
+        } catch (e: VehicleApiException) {
+            throw SyncException("Failed to fetch active vehicle IDs for dealer $dealerId", e)
+        }
+        
+        val offersToUpdate = mutableMapOf<OfferStatus, MutableList<Long>>()
+        val soldVehicleIds = mutableListOf<Long>()
+        val removedVehicleIds = mutableListOf<Long>()
+        val failedOfferIds = mutableListOf<Long>()
+        
+        // Step 3: Process each active offer
+        for (offer in activeOffers) {
+            if (offer.vehicleId in activeVehicleIds) continue
+            
+            try {
+                val isSold = vehicleApiClient.isVehicleSold(offer.vehicleId)
+                if (isSold) {
+                    soldVehicleIds.add(offer.id)
+                } else {
+                    removedVehicleIds.add(offer.id)
+                }
+            } catch (e: VehicleApiException) {
+                logger.warn("Failed to check status for vehicle ${offer.vehicleId} in offer ${offer.id}", e)
+                failedOfferIds.add(offer.id)
+            }
+        }
+        
+        // Step 4: Update statuses in bulk
+        var syncedCount = 0
+        if (soldVehicleIds.isNotEmpty()) {
+            syncedCount += offerRepository.bulkUpdateStatus(soldVehicleIds, OfferStatus.SOLD)
+        }
+        if (removedVehicleIds.isNotEmpty()) {
+            syncedCount += offerRepository.bulkUpdateStatus(removedVehicleIds, OfferStatus.REMOVED)
+        }
+        
+        // Step 5: Count skipped offers
+        val skippedCount = offers.size - activeOffers.size
+        
+        return SyncResult(
+            synced = syncedCount,
+            failed = failedOfferIds,
+            skipped = skippedCount
+        )
+    }
+}
 ```
 ```
 

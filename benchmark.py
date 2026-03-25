@@ -20,19 +20,66 @@ VERTEX_REGION  = "europe-west1"
 CLAUDE_MODEL   = "claude-sonnet-4-6"
 
 OLLAMA_BASE    = "http://192.168.1.103:11434/v1"
-OLLAMA_MODEL   = "qwen3:14b"
+OLLAMA_MODELS = [
+    {"name": "qwen3:8b",  "think": True,  "label": "qwen3:8b  (think=on) "},
+    {"name": "qwen3:14b", "think": False, "label": "qwen3:14b (think=off)"},
+    {"name": "qwen3:14b", "think": True,  "label": "qwen3:14b (think=on) "},
+    {"name": "qwen3:32b", "think": False, "label": "qwen3:32b (think=off)"},
+]
 
-PROMPT = """Write a Kotlin function that:
-1. Takes a list of integers
-2. Returns a map where keys are "even" and "odd"
-3. Each key maps to the sum of numbers in that category
-4. Handle empty list gracefully
+PROMPT = '''You are working in an existing Kotlin Spring Boot service. Here is the relevant code:
 
-Include a brief docstring and one usage example in a comment."""
+```kotlin
+// Existing domain types
+data class Offer(val id: Long, val dealerId: Long, val vehicleId: Long, val status: OfferStatus)
+enum class OfferStatus { ACTIVE, SOLD, REMOVED }
+data class SyncResult(val synced: Int, val failed: List<Long>, val skipped: Int)
 
-# /no_think disables Qwen3's internal chain-of-thought, drastically reducing
-# time to first token at the cost of less "reasoning" before answering
-PROMPT_OLLAMA = PROMPT + "\n\n/no_think"
+// Existing repository — use these methods, do not modify
+@Repository
+class OfferRepository(private val jdbcTemplate: NamedParameterJdbcTemplate) {
+    fun findByDealerId(dealerId: Long): List<Offer> { ... }
+    fun findById(id: Long): Offer? { ... }
+    fun updateStatus(id: Long, status: OfferStatus): Boolean { ... }
+    fun bulkUpdateStatus(ids: List<Long>, status: OfferStatus): Int { ... }
+}
+
+// Existing external client — use as-is
+@Component
+class VehicleApiClient {
+    fun fetchActiveVehicleIds(dealerId: Long): Set<Long>   // throws VehicleApiException on failure
+    fun isVehicleSold(vehicleId: Long): Boolean            // throws VehicleApiException on failure
+}
+
+// Existing exception types
+class VehicleApiException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+class SyncException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+```
+
+Implement a `syncDealerOffers(dealerId: Long): SyncResult` method for the following service class:
+
+```kotlin
+@Service
+class OfferSyncService(
+    private val offerRepository: OfferRepository,
+    private val vehicleApiClient: VehicleApiClient,
+    private val logger: Logger = LoggerFactory.getLogger(OfferSyncService::class.java)
+) {
+    // implement here
+}
+```
+
+Requirements:
+1. Fetch current offers for the dealer from the repository
+2. Fetch active vehicle IDs from the external API — if this call fails, throw SyncException
+3. For each ACTIVE offer:
+   - If its vehicleId is NOT in the active set, check if the vehicle is sold via the API
+   - If sold → mark offer as SOLD; if not → mark as REMOVED
+   - If the API call for a single vehicle fails, log a warning and add the offer ID to `failed` — do not abort the whole sync
+4. Offers already SOLD or REMOVED → count as skipped, do not touch them
+5. Use bulkUpdateStatus where possible to minimize DB calls
+6. Return a SyncResult with counts
+7. No explanation, just the method'''
 
 # ── Result container ───────────────────────────────────────────────────────────
 class Result:
@@ -74,21 +121,22 @@ def run_claude(result: Result):
     except Exception as e:
         result.error = str(e)
 
-# ── Qwen3 via Ollama native API ────────────────────────────────────────────────
-def run_ollama(result: Result):
+# ── Ollama via native API ───────────────────────────────────────────────────────
+def run_ollama(result: Result, model: str, think: bool):
     try:
-        import urllib.request
+        import urllib.request, json as _json
 
+        host = OLLAMA_BASE.split("://")[1].split("/")[0].split(":")[0]
         payload = {
-            "model": OLLAMA_MODEL,
-            "think": False,
+            "model": model,
+            "think": think,
             "stream": True,
             "messages": [{"role": "user", "content": PROMPT}],
         }
 
         req = urllib.request.Request(
-            f"http://{OLLAMA_BASE.split('://')[1].split('/')[0].split(':')[0]}:11434/api/chat",
-            data=__import__("json").dumps(payload).encode(),
+            f"http://{host}:11434/api/chat",
+            data=_json.dumps(payload).encode(),
             headers={"Content-Type": "application/json"},
         )
 
@@ -97,7 +145,7 @@ def run_ollama(result: Result):
 
         with urllib.request.urlopen(req) as resp:
             for line in resp:
-                chunk = __import__("json").loads(line.decode())
+                chunk = _json.loads(line.decode())
                 token = chunk.get("message", {}).get("content", "")
                 if token:
                     if first_token is None:
@@ -114,25 +162,28 @@ def run_ollama(result: Result):
     except Exception as e:
         result.error = str(e)
 
-# ── Run both in parallel ───────────────────────────────────────────────────────
+# ── Run all in parallel ────────────────────────────────────────────────────────
 def main():
     claude = Result("Claude Sonnet 4.6 (Vertex AI)")
-    ollama = Result(f"{OLLAMA_MODEL} (Ollama remote, think=off)")
+    ollama_results = [Result(m["label"]) for m in OLLAMA_MODELS]
 
     print("Running benchmark in parallel...")
     print(f"Prompt: {PROMPT[:80].strip()}...\n")
 
-    t1 = threading.Thread(target=run_claude, args=(claude,))
-    t2 = threading.Thread(target=run_ollama, args=(ollama,))
+    threads = [threading.Thread(target=run_claude, args=(claude,))]
+    for result, m in zip(ollama_results, OLLAMA_MODELS):
+        threads.append(threading.Thread(target=run_ollama, args=(result, m["name"], m["think"])))
 
-    t1.start()
-    t2.start()
-    t1.join()
-    t2.join()
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    all_results = [claude] + ollama_results
 
     # ── Print summary ──────────────────────────────────────────────────────────
     print("=" * 60)
-    for r in [claude, ollama]:
+    for r in all_results:
         print(f"\n{r.name}")
         if r.error:
             print(f"  ERROR: {r.error}")
@@ -145,19 +196,19 @@ def main():
     # ── Save full results to markdown ──────────────────────────────────────────
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     out = f"# Benchmark Results — {ts}\n\n"
-    out += f"## Prompt\n```\n{PROMPT.strip()}\n```\n\n"
+    out += f"## Prompt\n```kotlin\n{PROMPT.strip()}\n```\n\n"
     out += "## Speed Summary\n\n"
     out += "| | Time to first token | Total time | Output tokens |\n"
     out += "|---|---|---|---|\n"
 
-    for r in [claude, ollama]:
+    for r in all_results:
         if r.error:
             out += f"| {r.name} | ERROR | ERROR | — |\n"
         else:
             out += f"| {r.name} | {r.first_token_ms} ms | {r.total_ms} ms | ~{r.tokens} |\n"
 
     out += "\n---\n\n"
-    for r in [claude, ollama]:
+    for r in all_results:
         out += f"## {r.name}\n\n"
         if r.error:
             out += f"**Error:** {r.error}\n\n"
