@@ -21,10 +21,11 @@ CLAUDE_MODEL   = "claude-sonnet-4-6"
 
 OLLAMA_BASE    = "http://192.168.1.103:11434/v1"
 OLLAMA_MODELS = [
-    {"name": "qwen3:8b",  "think": True,  "label": "qwen3:8b  (think=on) "},
-    {"name": "qwen3:14b", "think": False, "label": "qwen3:14b (think=off)"},
-    {"name": "qwen3:14b", "think": True,  "label": "qwen3:14b (think=on) "},
-    {"name": "qwen3:32b", "think": False, "label": "qwen3:32b (think=off)"},
+    {"name": "qwen3:14b",        "think": False, "label": "qwen3:14b         (think=off)"},
+    {"name": "qwen2.5-coder:14b","think": False, "label": "qwen2.5-coder:14b (think=off)"},
+    {"name": "phi4:14b",         "think": False, "label": "phi4:14b          (think=off)"},
+    {"name": "gemma3:12b",       "think": False, "label": "gemma3:12b        (think=off)"},
+    {"name": "mistral-nemo:12b", "think": False, "label": "mistral-nemo:12b  (think=off)"},
 ]
 
 PROMPT = '''You are working in an existing Kotlin Spring Boot service. Here is the relevant code:

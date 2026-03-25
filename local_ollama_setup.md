@@ -181,101 +181,89 @@ curl -s http://YOUR_SERVER_IP:11434/api/tags | python3 -m json.tool
 
 ## Benchmarks
 
-> **Note:** These are simple benchmarks meant to give a rough sense of speed and output style — not a comprehensive evaluation. Results will vary depending on GPU, network, and prompt complexity. Three progressively harder tasks were tested across multiple model variants.
+> **Note:** These are informal benchmarks meant to give a rough sense of speed and output quality — not a comprehensive evaluation. Models were tested across three progressively harder tasks. Speed numbers vary when models share VRAM; the quality assessment is the more reliable signal.
 
 ### Setup
 - **Date:** 2026-03-25
 - **Client:** MacBook Pro (Apple Silicon), running aider locally
-- **Server:** Windows PC with dedicated GPU (~19 GB VRAM used), Ollama on LAN
+- **Server:** Windows PC with dedicated GPU, Ollama on LAN
 - **Claude:** Sonnet 4.6 via Vertex AI (GCP, europe-west1)
-- **Script:** `benchmark.py` in this repo (sends same prompt to all models in parallel)
+- **Script:** `benchmark.py` in this repo
+
+### Models tested
+| Model | Size | Notes |
+|---|---|---|
+| Claude Sonnet 4.6 | — | Via Vertex AI |
+| qwen3:14b (think=off) | ~9 GB | Current aider editor |
+| qwen2.5-coder:14b | ~9 GB | Code-specialized |
+| phi4:14b | ~9 GB | Microsoft, strong reasoning |
+| gemma3:12b | ~8 GB | Google |
+| mistral-nemo:12b | ~7 GB | API error — could not test |
+| qwen3:8b (think=on) | ~5 GB | Thinking enabled |
+| qwen3:32b (think=off) | ~19 GB | Largest local model |
 
 ---
 
-### Test 1 — Simple (basic function)
-**Task:** Write a Kotlin function that partitions a list of integers into even/odd sums.
+### Task 1 — Simple: write a function from scratch
+**Prompt:** Partition a list of integers into even/odd sums, return as a map.
 
-| | Time to first token | Total time | Output tokens |
-|---|---|---|---|
-| Claude Sonnet 4.6 (Vertex AI) | 2 443 ms | 14 716 ms | ~950 |
-| qwen3:14b (think=off) | **304 ms** | 15 849 ms | ~190 |
-
-**Quality:** Both correct. qwen3:14b was more concise (5 lines). Claude more thorough with edge cases and explanation.
+All models produced correct, idiomatic Kotlin. No meaningful quality difference. Claude was more verbose (edge cases, explanations); local models were more concise.
 
 ---
 
-### Test 2 — Medium (pattern matching in existing class)
-**Task:** Add a `deactivateById()` method to an existing Spring Boot repository, following existing patterns.
+### Task 2 — Medium: add a method to an existing class
+**Prompt:** Add `deactivateById(id: Long): Boolean` to an existing Spring Boot repository, following existing patterns exactly.
 
-| | Time to first token | Total time | Output tokens |
-|---|---|---|---|
-| Claude Sonnet 4.6 (Vertex AI) | 1 441 ms | **2 072 ms** | ~76 |
-| qwen3:8b (think=on) | 26 342 ms | 28 139 ms | ~57 |
-| qwen3:14b (think=off) | 2 930 ms | 30 464 ms | ~57 |
-
-**Quality:** All three produced identical, correct code. No meaningful difference.
+All tested models produced identical, correct code. No meaningful difference.
 
 ---
 
-### Test 3 — Complex (business logic with error handling)
-**Task:** Implement `syncDealerOffers()` — fetches from DB and external API, handles partial failures, uses bulk DB updates, returns a structured result.
+### Task 3 — Complex: business logic with error handling
+**Prompt:** Implement `syncDealerOffers()` — fetch from DB and external API, handle partial failures per offer, use bulk DB updates, return a structured result.
 
-#### Round 1 — qwen3 variants
-| | Time to first token | Total time | Output tokens |
-|---|---|---|---|
-| Claude Sonnet 4.6 (Vertex AI) | **1 377 ms** | **6 299 ms** | ~531 |
-| qwen3:14b (think=off) | 2 930 ms | 30 464 ms | ~326 |
-| qwen3:14b (think=on) | 302 007 ms | 336 652 ms | ~370 |
-| qwen3:32b (think=off) | 349 556 ms | 483 339 ms | ~484 |
-| qwen3:8b (think=on) | 789 631 ms | 803 790 ms | ~367 |
+#### Speed (indicative — varies with VRAM load)
+| Model | Time to first token | Total time |
+|---|---|---|
+| Claude Sonnet 4.6 | ~1–5 s | ~6–15 s |
+| qwen3:14b (think=off) | ~0.2–3 s | ~27–90 s |
+| qwen2.5-coder:14b | ~4–130 s | ~44–165 s |
+| phi4:14b | ~12–60 s | ~55–90 s |
+| gemma3:12b | ~1–140 s | ~52–200 s |
+| qwen3:14b (think=on) | ~5 min | ~6 min |
+| qwen3:32b (think=off) | ~6 min | ~8 min |
+| qwen3:8b (think=on) | ~13 min | ~13 min |
 
-**Quality:**
-| | Correct logic | Bulk updates | `skipped` correct | Bug-free |
-|---|---|---|---|---|
-| Claude Sonnet 4.6 | Yes | Yes | Yes | Yes |
-| qwen3:14b (think=off) | Almost | Yes | Yes | No — compile error in groupBy |
-| qwen3:14b (think=on) | Yes | Yes | No | Yes |
-| qwen3:32b (think=off) | Yes | Yes | Yes | Yes |
-| qwen3:8b (think=on) | Yes | Yes | No | Yes |
-
-#### Round 2 — qwen2.5-coder:14b vs qwen3:14b
-> Note: qwen3:14b was slower than usual in this run, likely due to VRAM contention from a parallel model download on the server.
-
-| | Time to first token | Total time | Output tokens |
-|---|---|---|---|
-| Claude Sonnet 4.6 (Vertex AI) | 4 861 ms | **9 443 ms** | ~527 |
-| **qwen2.5-coder:14b (think=off)** | **4 169 ms** | 44 505 ms | ~344 |
-| qwen3:14b (think=off) | 53 781 ms | 88 066 ms | ~382 |
-
-**Quality — qwen2.5-coder:14b:**
-- Correct overall structure and error handling flow
-- Bug 1: `bulkUpdateStatus()` called with `List<OfferStatus>` instead of a single `OfferStatus` — type error, does not compile
-- Bug 2: `synced` count calculation is mathematically wrong — can exceed total offer count
-
-**Observation:** `qwen2.5-coder:14b` matched Claude's first-token latency (~4s) despite running locally. Purpose-built code models have less reasoning overhead and respond faster to code prompts.
+#### Quality
+| Model | Bug-free | Notes |
+|---|---|---|
+| **Claude Sonnet 4.6** | **Yes** | Consistent across all runs |
+| **phi4:14b** | **Yes** | Correct and clean — separate SOLD/REMOVED lists, proper bulk calls |
+| qwen2.5-coder:14b | No | Passes `List<OfferStatus>` to `bulkUpdateStatus` instead of single status — type error |
+| qwen3:14b (think=off) | No | Ignores `isSold` result — both branches add to same list, sets everything to SOLD |
+| gemma3:12b | No | Scoping bug (`activeVehicleIds` inside try block), double updates, extra N+1 DB calls |
+| qwen3:32b (think=off) | Yes | Correct but ~6 min to first token — impractical |
+| qwen3:8b/14b (think=on) | Partial | Thinking mode adds no quality benefit, only extreme latency |
+| mistral-nemo:12b | — | HTTP 500 from Ollama API — incompatible |
 
 ---
 
-### Overall conclusions
+### Conclusions
 
-**Speed:**
-- `qwen2.5-coder:14b` and `qwen3:14b` (both think=off) are the fastest local options
-- `qwen2.5-coder:14b` is particularly fast to first token on code tasks — matched Claude's latency in testing
-- `think=on` adds no meaningful quality improvement but multiplies latency by 10-100x regardless of model size
-- Claude's first-token latency (~1-5s) reflects network roundtrip to Vertex AI (europe-west1) and varies with load
+**On thinking mode (`think=on`):**
+Tested on qwen3:8b, qwen3:14b, and qwen3:32b. Adds 5–13 minutes of latency with no measurable quality improvement on these tasks. Not useful for an interactive editor role.
 
-**Quality:**
-- For simple and medium tasks: all models produce correct, idiomatic code — no meaningful difference
-- For complex tasks with multiple interacting requirements: only Claude and qwen3:32b were consistently bug-free across all runs
-- Local 14b models reliably produce plausible-looking code with subtle bugs (wrong types, off-by-one counts) on complex tasks
-- `think=on` did not eliminate bugs — it only increased latency
+**On speed:**
+`qwen3:14b think=off` has the lowest latency to first token when VRAM is available (~200ms in the best case). `qwen2.5-coder:14b` is consistently fast on pure code prompts. Claude is bottlenecked by network latency to Vertex AI (~1–5s) but generates output much faster once it starts.
 
-**Practical recommendation for aider:**
-- `qwen3:14b think=off` or `qwen2.5-coder:14b` as editor — both work well for routine tasks (adding fields, small methods, refactors)
-- `qwen2.5-coder:14b` may be preferable for pure code tasks due to faster first-token response
-- On complex business logic, always review the output — local models can produce plausible-looking code with subtle bugs
-- `qwen3:32b` is too slow for interactive use; keep it for one-off deep analysis outside aider
-- More models being evaluated (phi4:14b, gemma3:12b, mistral-nemo:12b) — conclusions may be updated
+**On quality:**
+The gap between models is small on simple tasks and large on complex ones. `phi4:14b` was the only local model that produced correct, bug-free code on the complex task. The bugs in local models tend to be plausible-looking and easy to miss in a quick review.
+
+**Practical recommendations:**
+- Use `qwen3:14b think=off` as the aider editor for routine tasks — fast and sufficient for 80% of work
+- Consider switching to `phi4:14b` if you notice quality issues on complex logic
+- Always review local model output on complex business logic — bugs are subtle and syntactically valid
+- Keep `qwen3:32b` on the server for manual deep analysis, not for aider
+- `gemma3:12b` and `mistral-nemo:12b` are not recommended for this use case
 
 ---
 

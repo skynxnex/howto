@@ -1,4 +1,4 @@
-# Benchmark Results — 2026-03-25 13:08
+# Benchmark Results — 2026-03-25 14:05
 
 ## Prompt
 ```kotlin
@@ -61,11 +61,12 @@ Requirements:
 
 | | Time to first token | Total time | Output tokens |
 |---|---|---|---|
-| Claude Sonnet 4.6 (Vertex AI) | 1377 ms | 6299 ms | ~531 |
-| qwen3:8b  (think=on)  | 789631 ms | 803790 ms | ~367 |
-| qwen3:14b (think=off) | 2930 ms | 30464 ms | ~326 |
-| qwen3:14b (think=on)  | 302007 ms | 336652 ms | ~370 |
-| qwen3:32b (think=off) | 349556 ms | 483339 ms | ~484 |
+| Claude Sonnet 4.6 (Vertex AI) | 2555 ms | 7835 ms | ~535 |
+| qwen3:14b         (think=off) | 95548 ms | 119633 ms | ~286 |
+| qwen2.5-coder:14b (think=off) | 126659 ms | 164525 ms | ~338 |
+| phi4:14b          (think=off) | 58897 ms | 90916 ms | ~374 |
+| gemma3:12b        (think=off) | 955 ms | 52164 ms | ~549 |
+| mistral-nemo:12b  (think=off) | ERROR | ERROR | — |
 
 ---
 
@@ -74,7 +75,7 @@ Requirements:
 ```kotlin
 ```kotlin
 fun syncDealerOffers(dealerId: Long): SyncResult {
-    val offers = offerRepository.findByDealerId(dealerId)
+    val currentOffers = offerRepository.findByDealerId(dealerId)
 
     val activeVehicleIds = try {
         vehicleApiClient.fetchActiveVehicleIds(dealerId)
@@ -82,17 +83,17 @@ fun syncDealerOffers(dealerId: Long): SyncResult {
         throw SyncException("Failed to fetch active vehicle IDs for dealer $dealerId", e)
     }
 
-    val skipped = offers.count { it.status != OfferStatus.ACTIVE }
-    val activeOffers = offers.filter { it.status == OfferStatus.ACTIVE }
+    val activeOffers = currentOffers.filter { it.status == OfferStatus.ACTIVE }
+    val skipped = currentOffers.size - activeOffers.size
 
-    val offersToCheck = activeOffers.filter { it.vehicleId !in activeVehicleIds }
-    val stillActiveOffers = activeOffers.filter { it.vehicleId in activeVehicleIds }
+    val offersNeedingStatusCheck = activeOffers.filter { it.vehicleId !in activeVehicleIds }
+    val offersStillActive = activeOffers.filter { it.vehicleId in activeVehicleIds }
 
     val toMarkSold = mutableListOf<Long>()
     val toMarkRemoved = mutableListOf<Long>()
     val failed = mutableListOf<Long>()
 
-    for (offer in offersToCheck) {
+    for (offer in offersNeedingStatusCheck) {
         try {
             val sold = vehicleApiClient.isVehicleSold(offer.vehicleId)
             if (sold) {
@@ -101,7 +102,7 @@ fun syncDealerOffers(dealerId: Long): SyncResult {
                 toMarkRemoved.add(offer.id)
             }
         } catch (e: VehicleApiException) {
-            logger.warn("Failed to check sold status for vehicle ${offer.vehicleId} (offer ${offer.id}): ${e.message}", e)
+            logger.warn("Failed to check sold status for vehicle ${offer.vehicleId} (offer ${offer.id}): ${e.message}")
             failed.add(offer.id)
         }
     }
@@ -125,59 +126,7 @@ fun syncDealerOffers(dealerId: Long): SyncResult {
 ```
 ```
 
-## qwen3:8b  (think=on) 
-
-```kotlin
-```kotlin
-@Service
-class OfferSyncService(
-    private val offerRepository: OfferRepository,
-    private val vehicleApiClient: VehicleApiClient,
-    private val logger: Logger = LoggerFactory.getLogger(OfferSyncService::class.java)
-) {
-    fun syncDealerOffers(dealerId: Long): SyncResult {
-        val offers = offerRepository.findByDealerId(dealerId)
-        return try {
-            val activeVehicles = vehicleApiClient.fetchActiveVehicleIds(dealerId)
-            val soldIds = mutableListOf<Long>()
-            val removedIds = mutableListOf<Long>()
-            val failed = mutableListOf<Long>()
-
-            for (offer in offers) {
-                if (offer.status == OfferStatus.ACTIVE) {
-                    val vehicleId = offer.vehicleId
-                    if (!activeVehicles.contains(vehicleId)) {
-                        try {
-                            val isSold = vehicleApiClient.isVehicleSold(vehicleId)
-                            if (isSold) {
-                                soldIds.add(offer.id)
-                            } else {
-                                removedIds.add(offer.id)
-                            }
-                        } catch (e: VehicleApiException) {
-                            logger.warn("Failed to check if vehicle $vehicleId is sold for offer ${offer.id}", e)
-                            failed.add(offer.id)
-                        }
-                    }
-                }
-            }
-
-            val soldCount = offerRepository.bulkUpdateStatus(soldIds, OfferStatus.SOLD)
-            val removedCount = offerRepository.bulkUpdateStatus(removedIds, OfferStatus.REMOVED)
-            val synced = soldCount + removedCount
-            val failedList = failed.toList()
-            val skipped = offers.size - synced - failedList.size
-
-            SyncResult(synced, failedList, skipped)
-        } catch (e: VehicleApiException) {
-            throw SyncException("Failed to fetch active vehicle IDs for dealer $dealerId", e)
-        }
-    }
-}
-```
-```
-
-## qwen3:14b (think=off)
+## qwen3:14b         (think=off)
 
 ```kotlin
 ```kotlin
@@ -189,37 +138,41 @@ fun syncDealerOffers(dealerId: Long): SyncResult {
         throw SyncException("Failed to fetch active vehicle IDs for dealer $dealerId", e)
     }
 
-    val toUpdate: MutableList<Pair<Long, OfferStatus>> = mutableListOf()
+    val toUpdate: MutableList<Long> = mutableListOf()
     val failed: MutableList<Long> = mutableListOf()
     var skipped = 0
 
-    for (offer in offers) {
-        when (offer.status) {
-            OfferStatus.SOLD, OfferStatus.REMOVED -> skipped++
-            OfferStatus.ACTIVE -> {
-                if (offer.vehicleId !in activeVehicleIds) {
-                    try {
-                        val isSold = vehicleApiClient.isVehicleSold(offer.vehicleId)
-                        val newStatus = if (isSold) OfferStatus.SOLD else OfferStatus.REMOVED
-                        toUpdate.add(Pair(offer.id, newStatus))
-                    } catch (e: VehicleApiException) {
-                        logger.warn("Failed to check vehicle status for vehicle ID ${offer.vehicleId}: ${e.message}", e)
-                        failed.add(offer.id)
-                    }
+    offers.forEach { offer ->
+        if (offer.status != OfferStatus.ACTIVE) {
+            skipped++
+            return@forEach
+        }
+
+        if (offer.vehicleId !in activeVehicleIds) {
+            try {
+                val isSold = vehicleApiClient.isVehicleSold(offer.vehicleId)
+                if (isSold) {
+                    toUpdate.add(offer.id)
+                } else {
+                    toUpdate.add(offer.id)
                 }
+            } catch (e: VehicleApiException) {
+                logger.warn("Failed to check vehicle status for vehicle ID ${offer.vehicleId}: ${e.message}", e)
+                failed.add(offer.id)
             }
         }
     }
 
-    val groupedUpdates = toUpdate.groupBy { it.second }.mapValues { it.value.map { it.first } }
-    val updatedCount = groupedUpdates.values.sumOf { offerRepository.bulkUpdateStatus(it, it.first) }
+    if (toUpdate.isNotEmpty()) {
+        offerRepository.bulkUpdateStatus(toUpdate, OfferStatus.SOLD)
+    }
 
-    return SyncResult(updatedCount, failed, skipped)
+    return SyncResult(toUpdate.size, failed, skipped)
 }
 ```
 ```
 
-## qwen3:14b (think=on) 
+## qwen2.5-coder:14b (think=off)
 
 ```kotlin
 ```kotlin
@@ -232,54 +185,97 @@ class OfferSyncService(
     fun syncDealerOffers(dealerId: Long): SyncResult {
         val offers = offerRepository.findByDealerId(dealerId)
         val activeVehicleIds: Set<Long>
-
+        
         try {
             activeVehicleIds = vehicleApiClient.fetchActiveVehicleIds(dealerId)
         } catch (e: VehicleApiException) {
-            throw SyncException("Failed to fetch active vehicle IDs for dealer $dealerId", e)
+            throw SyncException("Failed to fetch active vehicle IDs", e)
         }
 
-        val soldIds = mutableListOf<Long>()
-        val removedIds = mutableListOf<Long>()
+        val updates = mutableListOf<Pair<Long, OfferStatus>>()
         val failed = mutableListOf<Long>()
         var skipped = 0
 
         for (offer in offers) {
-            if (offer.status != OfferStatus.ACTIVE) {
-                skipped++
-                continue
-            }
-
-            val vehicleId = offer.vehicleId
-            if (activeVehicleIds.contains(vehicleId)) {
-                skipped++
-                continue
-            }
-
-            try {
-                val isSold = vehicleApiClient.isVehicleSold(vehicleId)
-                if (isSold) {
-                    soldIds.add(offer.id)
-                } else {
-                    removedIds.add(offer.id)
+            when (offer.status) {
+                OfferStatus.SOLD, OfferStatus.REMOVED -> skipped++
+                else -> {
+                    if (!activeVehicleIds.contains(offer.vehicleId)) {
+                        try {
+                            val isSold = vehicleApiClient.isVehicleSold(offer.vehicleId)
+                            updates.add(offer.id to if (isSold) OfferStatus.SOLD else OfferStatus.REMOVED)
+                        } catch (e: VehicleApiException) {
+                            logger.warn("Failed to check vehicle status for offer ID ${offer.id}: ${e.message}")
+                            failed.add(offer.id)
+                        }
+                    }
                 }
-            } catch (e: VehicleApiException) {
-                logger.warn("Failed to check vehicle sold status for vehicleId $vehicleId", e)
-                failed.add(offer.id)
             }
         }
 
-        val soldCount = offerRepository.bulkUpdateStatus(soldIds, OfferStatus.SOLD)
-        val removedCount = offerRepository.bulkUpdateStatus(removedIds, OfferStatus.REMOVED)
-        val synced = soldCount + removedCount
+        val bulkUpdateResult = offerRepository.bulkUpdateStatus(updates.map { it.first }, updates.map { it.second })
+        val synced = updates.size - failed.size
 
-        return SyncResult(synced, failed.toList(), skipped)
+        return SyncResult(synced, failed, skipped)
     }
 }
 ```
 ```
 
-## qwen3:32b (think=off)
+## phi4:14b          (think=off)
+
+```kotlin
+```kotlin
+@Service
+class OfferSyncService(
+    private val offerRepository: OfferRepository,
+    private val vehicleApiClient: VehicleApiClient,
+    private val logger: Logger = LoggerFactory.getLogger(OfferSyncService::class.java)
+) {
+    
+    fun syncDealerOffers(dealerId: Long): SyncResult {
+        val offers = offerRepository.findByDealerId(dealerId)
+        val activeVehicleIds = try {
+            vehicleApiClient.fetchActiveVehicleIds(dealerId)
+        } catch (e: VehicleApiException) {
+            throw SyncException("Failed to fetch active vehicle IDs for dealer $dealerId", e)
+        }
+        
+        val idsToMarkSold = mutableListOf<Long>()
+        val idsToRemove = mutableListOf<Long>()
+        val failedIds = mutableListOf<Long>()
+
+        offers.filter { it.status == OfferStatus.ACTIVE }.forEach { offer ->
+            if (offer.vehicleId !in activeVehicleIds) {
+                try {
+                    if (vehicleApiClient.isVehicleSold(offer.vehicleId)) {
+                        idsToMarkSold.add(offer.id)
+                    } else {
+                        idsToRemove.add(offer.id)
+                    }
+                } catch (e: VehicleApiException) {
+                    logger.warn("Failed to check vehicle status for offer ID ${offer.id}", e)
+                    failedIds.add(offer.id)
+                }
+            }
+        }
+
+        if (idsToMarkSold.isNotEmpty()) {
+            offerRepository.bulkUpdateStatus(idsToMarkSold, OfferStatus.SOLD)
+        }
+        if (idsToRemove.isNotEmpty()) {
+            offerRepository.bulkUpdateStatus(idsToRemove, OfferStatus.REMOVED)
+        }
+
+        val skippedCount = offers.count { it.status == OfferStatus.SOLD || it.status == OfferStatus.REMOVED }
+
+        return SyncResult(synced = idsToMarkSold.size + idsToRemove.size, failed = failedIds, skipped = skippedCount)
+    }
+}
+```
+```
+
+## gemma3:12b        (think=off)
 
 ```kotlin
 ```kotlin
@@ -290,59 +286,67 @@ class OfferSyncService(
     private val logger: Logger = LoggerFactory.getLogger(OfferSyncService::class.java)
 ) {
     fun syncDealerOffers(dealerId: Long): SyncResult {
-        // Step 1: Fetch current offers for the dealer
         val offers = offerRepository.findByDealerId(dealerId)
-        val activeOffers = offers.filter { it.status == OfferStatus.ACTIVE }
-        
-        // Step 2: Fetch active vehicle IDs from the API
-        val activeVehicleIds: Set<Long>
         try {
-            activeVehicleIds = vehicleApiClient.fetchActiveVehicleIds(dealerId)
+            val activeVehicleIds = vehicleApiClient.fetchActiveVehicleIds(dealerId)
         } catch (e: VehicleApiException) {
             throw SyncException("Failed to fetch active vehicle IDs for dealer $dealerId", e)
         }
-        
-        val offersToUpdate = mutableMapOf<OfferStatus, MutableList<Long>>()
-        val soldVehicleIds = mutableListOf<Long>()
-        val removedVehicleIds = mutableListOf<Long>()
-        val failedOfferIds = mutableListOf<Long>()
-        
-        // Step 3: Process each active offer
-        for (offer in activeOffers) {
-            if (offer.vehicleId in activeVehicleIds) continue
-            
-            try {
-                val isSold = vehicleApiClient.isVehicleSold(offer.vehicleId)
-                if (isSold) {
-                    soldVehicleIds.add(offer.id)
-                } else {
-                    removedVehicleIds.add(offer.id)
+
+        var synced = 0
+        var failed = mutableListOf<Long>()
+        var skipped = 0
+        val updatedOfferIds = mutableListOf<Long>()
+
+        for (offer in offers) {
+            when (offer.status) {
+                OfferStatus.ACTIVE -> {
+                    if (activeVehicleIds.contains(offer.vehicleId)) {
+                        synced++
+                    } else {
+                        try {
+                            if (vehicleApiClient.isVehicleSold(offer.vehicleId)) {
+                                offerRepository.updateStatus(offer.id, OfferStatus.SOLD)
+                                synced++
+                            } else {
+                                offerRepository.updateStatus(offer.id, OfferStatus.REMOVED)
+                                synced++
+                            }
+                        } catch (e: VehicleApiException) {
+                            logger.warn("Failed to check vehicle status for offer ${offer.id}: ${e.message}")
+                            failed.add(offer.id)
+                        }
+                    }
+                    updatedOfferIds.add(offer.id)
                 }
-            } catch (e: VehicleApiException) {
-                logger.warn("Failed to check status for vehicle ${offer.vehicleId} in offer ${offer.id}", e)
-                failedOfferIds.add(offer.id)
+                OfferStatus.SOLD -> skipped++
+                OfferStatus.REMOVED -> skipped++
             }
         }
-        
-        // Step 4: Update statuses in bulk
-        var syncedCount = 0
-        if (soldVehicleIds.isNotEmpty()) {
-            syncedCount += offerRepository.bulkUpdateStatus(soldVehicleIds, OfferStatus.SOLD)
+
+        if (updatedOfferIds.isNotEmpty()) {
+            val statuses = updatedOfferIds.groupBy { offerRepository.findById(it)?.status }
+            statuses.forEach { (status, ids) ->
+                when (status) {
+                    OfferStatus.SOLD -> {
+                        val updatedCount = offerRepository.bulkUpdateStatus(ids, OfferStatus.SOLD)
+                        synced += updatedCount
+                    }
+                    OfferStatus.REMOVED -> {
+                        val updatedCount = offerRepository.bulkUpdateStatus(ids, OfferStatus.REMOVED)
+                        synced += updatedCount
+                    }
+                }
+            }
         }
-        if (removedVehicleIds.isNotEmpty()) {
-            syncedCount += offerRepository.bulkUpdateStatus(removedVehicleIds, OfferStatus.REMOVED)
-        }
-        
-        // Step 5: Count skipped offers
-        val skippedCount = offers.size - activeOffers.size
-        
-        return SyncResult(
-            synced = syncedCount,
-            failed = failedOfferIds,
-            skipped = skippedCount
-        )
+
+        return SyncResult(synced, failed, skipped)
     }
 }
 ```
 ```
+
+## mistral-nemo:12b  (think=off)
+
+**Error:** HTTP Error 500: Internal Server Error
 
