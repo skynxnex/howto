@@ -181,7 +181,7 @@ curl -s http://YOUR_SERVER_IP:11434/api/tags | python3 -m json.tool
 
 ## Benchmarks
 
-> **Note:** These are simple benchmarks meant to give a rough sense of speed and output style — not a comprehensive evaluation. Results will vary depending on GPU, network, and prompt complexity. Three progressively harder tasks were tested.
+> **Note:** These are simple benchmarks meant to give a rough sense of speed and output style — not a comprehensive evaluation. Results will vary depending on GPU, network, and prompt complexity. Three progressively harder tasks were tested across multiple model variants.
 
 ### Setup
 - **Date:** 2026-03-25
@@ -220,6 +220,7 @@ curl -s http://YOUR_SERVER_IP:11434/api/tags | python3 -m json.tool
 ### Test 3 — Complex (business logic with error handling)
 **Task:** Implement `syncDealerOffers()` — fetches from DB and external API, handles partial failures, uses bulk DB updates, returns a structured result.
 
+#### Round 1 — qwen3 variants
 | | Time to first token | Total time | Output tokens |
 |---|---|---|---|
 | Claude Sonnet 4.6 (Vertex AI) | **1 377 ms** | **6 299 ms** | ~531 |
@@ -229,7 +230,7 @@ curl -s http://YOUR_SERVER_IP:11434/api/tags | python3 -m json.tool
 | qwen3:8b (think=on) | 789 631 ms | 803 790 ms | ~367 |
 
 **Quality:**
-| | Correct logic | Bulk updates | `skipped` count correct | Bug-free |
+| | Correct logic | Bulk updates | `skipped` correct | Bug-free |
 |---|---|---|---|---|
 | Claude Sonnet 4.6 | Yes | Yes | Yes | Yes |
 | qwen3:14b (think=off) | Almost | Yes | Yes | No — compile error in groupBy |
@@ -237,24 +238,44 @@ curl -s http://YOUR_SERVER_IP:11434/api/tags | python3 -m json.tool
 | qwen3:32b (think=off) | Yes | Yes | Yes | Yes |
 | qwen3:8b (think=on) | Yes | Yes | No | Yes |
 
+#### Round 2 — qwen2.5-coder:14b vs qwen3:14b
+> Note: qwen3:14b was slower than usual in this run, likely due to VRAM contention from a parallel model download on the server.
+
+| | Time to first token | Total time | Output tokens |
+|---|---|---|---|
+| Claude Sonnet 4.6 (Vertex AI) | 4 861 ms | **9 443 ms** | ~527 |
+| **qwen2.5-coder:14b (think=off)** | **4 169 ms** | 44 505 ms | ~344 |
+| qwen3:14b (think=off) | 53 781 ms | 88 066 ms | ~382 |
+
+**Quality — qwen2.5-coder:14b:**
+- Correct overall structure and error handling flow
+- Bug 1: `bulkUpdateStatus()` called with `List<OfferStatus>` instead of a single `OfferStatus` — type error, does not compile
+- Bug 2: `synced` count calculation is mathematically wrong — can exceed total offer count
+
+**Observation:** `qwen2.5-coder:14b` matched Claude's first-token latency (~4s) despite running locally. Purpose-built code models have less reasoning overhead and respond faster to code prompts.
+
 ---
 
 ### Overall conclusions
 
 **Speed:**
-- `qwen3:14b think=off` is the fastest local option — near-instant first token on simple tasks, manageable on medium tasks
+- `qwen2.5-coder:14b` and `qwen3:14b` (both think=off) are the fastest local options
+- `qwen2.5-coder:14b` is particularly fast to first token on code tasks — matched Claude's latency in testing
 - `think=on` adds no meaningful quality improvement but multiplies latency by 10-100x regardless of model size
-- Claude's first-token latency (~1.4s) reflects network roundtrip to Vertex AI (europe-west1)
+- Claude's first-token latency (~1-5s) reflects network roundtrip to Vertex AI (europe-west1) and varies with load
 
 **Quality:**
 - For simple and medium tasks: all models produce correct, idiomatic code — no meaningful difference
-- For complex tasks with multiple interacting requirements: only Claude and qwen3:32b were consistently bug-free
-- `qwen3:14b think=off` had a compile error in a complex `groupBy` chain — the kind of thing that's easy to miss in a review
+- For complex tasks with multiple interacting requirements: only Claude and qwen3:32b were consistently bug-free across all runs
+- Local 14b models reliably produce plausible-looking code with subtle bugs (wrong types, off-by-one counts) on complex tasks
+- `think=on` did not eliminate bugs — it only increased latency
 
 **Practical recommendation for aider:**
-- `qwen3:14b think=off` as editor is the right call for routine coding tasks (adding fields, small methods, refactors)
+- `qwen3:14b think=off` or `qwen2.5-coder:14b` as editor — both work well for routine tasks (adding fields, small methods, refactors)
+- `qwen2.5-coder:14b` may be preferable for pure code tasks due to faster first-token response
 - On complex business logic, always review the output — local models can produce plausible-looking code with subtle bugs
 - `qwen3:32b` is too slow for interactive use; keep it for one-off deep analysis outside aider
+- More models being evaluated (phi4:14b, gemma3:12b, mistral-nemo:12b) — conclusions may be updated
 
 ---
 
