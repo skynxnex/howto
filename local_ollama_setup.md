@@ -71,7 +71,7 @@ These are large downloads (~8 GB and ~19 GB). Both will be stored in `%USERPROFI
 ### 5. Find the server's IP address
 ```powershell
 ipconfig
-# Look for IPv4 Address under your LAN adapter, e.g. 192.168.1.103
+# Look for IPv4 Address under your LAN adapter, e.g. 192.168.1.100
 ```
 
 Note this IP — you'll use it in the client config.
@@ -152,18 +152,20 @@ brew services start ollama
 
 ---
 
-## Current server details
+## Example server details
+
+Replace `YOUR_SERVER_IP` with the actual IP address of your server throughout this document.
 
 | Setting | Value |
 |---|---|
-| OS | Windows |
-| IP address | `192.168.1.103` |
-| Port | `11434` |
+| OS | Windows or Mac Mini |
+| IP address | `YOUR_SERVER_IP` |
+| Port | `11434` (Ollama default) |
 | Models | `deepseek-r1:14b`, `qwen3:14b`, `qwen3:32b` |
 
 Verify models are available from client:
 ```bash
-curl -s http://192.168.1.103:11434/api/tags | python3 -m json.tool
+curl -s http://YOUR_SERVER_IP:11434/api/tags | python3 -m json.tool
 ```
 
 > **Note:** `qwen3:32b` is kept on the server for deep analysis tasks but is not used by aider.
@@ -270,7 +272,7 @@ aider --version
 **Content:**
 ```yaml
 # --- Connection ---
-openai-api-base: http://192.168.1.103:11434/v1
+openai-api-base: http://YOUR_SERVER_IP:11434/v1
 openai-api-key: ollama
 
 # --- Models ---
