@@ -179,47 +179,82 @@ curl -s http://YOUR_SERVER_IP:11434/api/tags | python3 -m json.tool
 
 ---
 
-## Benchmark: qwen3:14b vs Claude Sonnet 4.6
+## Benchmarks
 
-> **Note:** This is a simple, single-task benchmark meant to give a rough sense of speed and output style — not a comprehensive evaluation. Results will vary depending on GPU, network, and prompt complexity.
+> **Note:** These are simple benchmarks meant to give a rough sense of speed and output style — not a comprehensive evaluation. Results will vary depending on GPU, network, and prompt complexity. Three progressively harder tasks were tested.
 
 ### Setup
 - **Date:** 2026-03-25
 - **Client:** MacBook Pro (Apple Silicon), running aider locally
 - **Server:** Windows PC with dedicated GPU (~19 GB VRAM used), Ollama on LAN
 - **Claude:** Sonnet 4.6 via Vertex AI (GCP, europe-west1)
-- **Ollama:** qwen3:14b with `think=false` via native Ollama API
-- **Script:** `benchmark.py` in this repo (sends same prompt to both in parallel)
+- **Script:** `benchmark.py` in this repo (sends same prompt to all models in parallel)
 
-### Prompt used
-```
-Write a Kotlin function that:
-1. Takes a list of integers
-2. Returns a map where keys are "even" and "odd"
-3. Each key maps to the sum of numbers in that category
-4. Handle empty list gracefully
+---
 
-Include a brief docstring and one usage example in a comment.
-```
+### Test 1 — Simple (basic function)
+**Task:** Write a Kotlin function that partitions a list of integers into even/odd sums.
 
-### Results
+| | Time to first token | Total time | Output tokens |
+|---|---|---|---|
+| Claude Sonnet 4.6 (Vertex AI) | 2 443 ms | 14 716 ms | ~950 |
+| qwen3:14b (think=off) | **304 ms** | 15 849 ms | ~190 |
 
-| | Claude Sonnet 4.6 (Vertex AI) | qwen3:14b (Ollama, think=off) |
-|---|---|---|
-| Time to first token | 2 443 ms | **304 ms** |
-| Total time | 14 716 ms | 15 849 ms |
-| Output tokens | ~950 | ~190 |
+**Quality:** Both correct. qwen3:14b was more concise (5 lines). Claude more thorough with edge cases and explanation.
 
-### Output quality
-Both models produced correct, idiomatic Kotlin. The difference was in verbosity:
+---
 
-- **qwen3:14b** — 5 lines, minimal and clean. Gets straight to the point.
-- **Claude Sonnet 4.6** — more thorough: edge cases, design decisions table, ASCII flow diagram.
+### Test 2 — Medium (pattern matching in existing class)
+**Task:** Add a `deactivateById()` method to an existing Spring Boot repository, following existing patterns.
 
-### Takeaway
-For the **editor role in aider** (fast code generation), `qwen3:14b` with thinking disabled is a strong choice — comparable total speed to Claude, faster to first token, and produces clean code. Claude's advantage is depth and thoroughness, which matters more for complex reasoning than for routine edits.
+| | Time to first token | Total time | Output tokens |
+|---|---|---|---|
+| Claude Sonnet 4.6 (Vertex AI) | 1 441 ms | **2 072 ms** | ~76 |
+| qwen3:8b (think=on) | 26 342 ms | 28 139 ms | ~57 |
+| qwen3:14b (think=off) | 2 930 ms | 30 464 ms | ~57 |
 
-`qwen3:32b` with thinking enabled was tested and found impractical for this use case — time to first token exceeded 60 seconds even for trivial prompts.
+**Quality:** All three produced identical, correct code. No meaningful difference.
+
+---
+
+### Test 3 — Complex (business logic with error handling)
+**Task:** Implement `syncDealerOffers()` — fetches from DB and external API, handles partial failures, uses bulk DB updates, returns a structured result.
+
+| | Time to first token | Total time | Output tokens |
+|---|---|---|---|
+| Claude Sonnet 4.6 (Vertex AI) | **1 377 ms** | **6 299 ms** | ~531 |
+| qwen3:14b (think=off) | 2 930 ms | 30 464 ms | ~326 |
+| qwen3:14b (think=on) | 302 007 ms | 336 652 ms | ~370 |
+| qwen3:32b (think=off) | 349 556 ms | 483 339 ms | ~484 |
+| qwen3:8b (think=on) | 789 631 ms | 803 790 ms | ~367 |
+
+**Quality:**
+| | Correct logic | Bulk updates | `skipped` count correct | Bug-free |
+|---|---|---|---|---|
+| Claude Sonnet 4.6 | Yes | Yes | Yes | Yes |
+| qwen3:14b (think=off) | Almost | Yes | Yes | No — compile error in groupBy |
+| qwen3:14b (think=on) | Yes | Yes | No | Yes |
+| qwen3:32b (think=off) | Yes | Yes | Yes | Yes |
+| qwen3:8b (think=on) | Yes | Yes | No | Yes |
+
+---
+
+### Overall conclusions
+
+**Speed:**
+- `qwen3:14b think=off` is the fastest local option — near-instant first token on simple tasks, manageable on medium tasks
+- `think=on` adds no meaningful quality improvement but multiplies latency by 10-100x regardless of model size
+- Claude's first-token latency (~1.4s) reflects network roundtrip to Vertex AI (europe-west1)
+
+**Quality:**
+- For simple and medium tasks: all models produce correct, idiomatic code — no meaningful difference
+- For complex tasks with multiple interacting requirements: only Claude and qwen3:32b were consistently bug-free
+- `qwen3:14b think=off` had a compile error in a complex `groupBy` chain — the kind of thing that's easy to miss in a review
+
+**Practical recommendation for aider:**
+- `qwen3:14b think=off` as editor is the right call for routine coding tasks (adding fields, small methods, refactors)
+- On complex business logic, always review the output — local models can produce plausible-looking code with subtle bugs
+- `qwen3:32b` is too slow for interactive use; keep it for one-off deep analysis outside aider
 
 ---
 
