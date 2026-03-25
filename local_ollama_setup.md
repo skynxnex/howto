@@ -274,8 +274,20 @@ Since January 2026, Ollama implements Anthropic's Messages API. This means you c
 
 **Claude Code:**
 ```bash
-npm install -g @anthropic-ai/claude-code
+# macOS / Linux / WSL (recommended — auto-updates)
+curl -fsSL https://claude.ai/install.sh | bash
+
+# macOS via Homebrew (does not auto-update)
+brew install --cask claude-code
+
+# Windows PowerShell
+irm https://claude.ai/install.ps1 | iex
+
+# Windows via WinGet (does not auto-update)
+winget install Anthropic.ClaudeCode
 ```
+
+> Note: `npm install -g @anthropic-ai/claude-code` also works but is deprecated — use the native installer above.
 
 **Ollama CLI** (used only as a launcher — does not need to run models locally):
 ```bash
