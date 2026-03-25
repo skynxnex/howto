@@ -323,6 +323,10 @@ This command:
 
 When prompted, select a model. `phi4:14b` is the recommended choice based on benchmark results (see Part 4).
 
+## Known limitations
+
+Not all Claude Code features work with every local model. `/init` (which generates a CLAUDE.md file by analyzing your project) is known to fail or produce poor results with some models — it depends on the model's ability to follow structured output formats. If a command behaves unexpectedly, try a different model before assuming it's a configuration issue.
+
 ## Note: conflict with existing Claude Code setups
 
 If you already have Claude Code configured to use a paid API (Anthropic or Vertex AI), those settings may override what `ollama launch` sets up. On a fresh machine with no prior Claude Code configuration, it works without any extra steps.
