@@ -159,17 +159,21 @@ brew services start ollama
 | OS | Windows |
 | IP address | `192.168.1.103` |
 | Port | `11434` |
-| Models | `deepseek-r1:14b`, `qwen3:32b` |
+| Models | `deepseek-r1:14b`, `qwen3:14b`, `qwen3:32b` |
 
 Verify models are available from client:
 ```bash
 curl -s http://192.168.1.103:11434/api/tags | python3 -m json.tool
 ```
 
+> **Note:** `qwen3:32b` is kept on the server for deep analysis tasks but is not used by aider.
+> To use it manually: `ollama run qwen3:32b` directly on the server.
+
 | Model | Role | Size | Quantization |
 |---|---|---|---|
 | `deepseek-r1:14b` | Architect (plans logic) | ~8.4 GB | Q4_K_M |
-| `qwen3:32b` | Editor (writes code) | ~18.8 GB | Q4_K_M |
+| `qwen3:14b` | Editor (writes code) | ~9 GB | Q4_K_M |
+| `qwen3:32b` | Deep analysis (manual use) | ~18.8 GB | Q4_K_M |
 
 ---
 
@@ -196,7 +200,7 @@ aider --version
 - This is mandatory to ensure I know which repository you are currently operating in. If unsure, run `pwd` internally.
 
 ## 2. Workflow (Architect & Editor Mode)
-- You operate in a dual-model team: DeepSeek-R1 (Architect) plans the logic; Qwen 3 (Editor) implements the code.
+- You operate in a dual-model team: DeepSeek-R1 14B (Architect) plans the logic; Qwen3 14B (Editor) implements the code.
 - **Architect Phase:** Always present a clear, step-by-step implementation plan in Markdown before modifying any files.
 - **Approval:** Wait for my explicit approval (e.g., "y", "go", or "proceed") before the Editor begins writing to the filesystem.
 
@@ -227,7 +231,7 @@ openai-api-key: ollama
 
 # --- Models ---
 model: openai/deepseek-r1:14b
-editor-model: openai/qwen3:32b
+editor-model: openai/qwen3:14b
 
 # --- Flow ---
 architect: true
