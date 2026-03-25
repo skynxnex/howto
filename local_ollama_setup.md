@@ -258,10 +258,21 @@ Tested on qwen3:8b, qwen3:14b, and qwen3:32b. Adds 5–13 minutes of latency wit
 **On quality:**
 The gap between models is small on simple tasks and large on complex ones. `phi4:14b` was the only local model that produced correct, bug-free code on the complex task. The bugs in local models tend to be plausible-looking and easy to miss in a quick review.
 
+**The speed vs quality tradeoff:**
+There is a clear tradeoff between the two strongest local models:
+
+| | qwen3:14b (think=off) | phi4:14b |
+|---|---|---|
+| First token | ~200ms best case | ~12s best case |
+| Complex task quality | Bugs in logic | Consistently correct |
+| Best for | Routine edits, fast iteration | Complex business logic |
+
+If your workflow is mostly small, well-defined changes (adding a field, renaming, small refactors) — `qwen3:14b` is the better choice due to speed. If you frequently work on complex logic with multiple interacting requirements, `phi4:14b` is worth the extra latency.
+
 **Practical recommendations:**
-- Use `qwen3:14b think=off` as the aider editor for routine tasks — fast and sufficient for 80% of work
-- Consider switching to `phi4:14b` if you notice quality issues on complex logic
-- Always review local model output on complex business logic — bugs are subtle and syntactically valid
+- `qwen3:14b think=off` is the current editor — fast and sufficient for routine tasks
+- Switch to `phi4:14b` as editor if you work on complex business logic and catch bugs in reviews
+- Always review local model output on complex tasks — bugs tend to be plausible-looking and syntactically valid
 - Keep `qwen3:32b` on the server for manual deep analysis, not for aider
 - `gemma3:12b` and `mistral-nemo:12b` are not recommended for this use case
 
