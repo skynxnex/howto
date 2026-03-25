@@ -272,6 +272,12 @@ Since January 2026, Ollama implements Anthropic's Messages API. This means you c
 
 ## Install
 
+**Claude Code:**
+```bash
+npm install -g @anthropic-ai/claude-code
+```
+
+**Ollama CLI** (used only as a launcher — does not need to run models locally):
 ```bash
 # Mac
 brew install ollama
@@ -283,7 +289,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 # Download from ollama.com/download/windows
 ```
 
-You do **not** need to start the Ollama service locally — you're only using it as a CLI tool to launch Claude Code.
+You do **not** need to start the Ollama service locally — it's only used as a CLI tool to configure and launch Claude Code.
 
 ## Launch
 
