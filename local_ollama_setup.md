@@ -13,6 +13,21 @@ Paid AI APIs (Claude, GPT-4, etc.) are powerful but cost money and send your cod
 
 **The tradeoff:** Local models are generally slower and less capable than frontier models like Claude Sonnet. For routine coding tasks the difference is small. For complex logic you'll want to review the output carefully.
 
+## Is this better than copy-pasting into ChatGPT or Gemini?
+
+It depends on the size of the codebase you're working in.
+
+For a small script or a one-off question, copy-pasting into a capable frontier model (GPT-4o, Gemini) is perfectly fine — and those models are arguably stronger than what you can run locally. You might not gain much from this setup in that case.
+
+Where this approach pulls ahead is when you're working in a larger, real codebase:
+
+- The tool reads the files it needs automatically — you don't have to decide what to include
+- It understands existing patterns without you having to explain them
+- It can write changes directly, run tests, and react to the results
+- Context that would be tedious to copy manually is already there
+
+The model quality is lower than frontier models, but the tooling advantage becomes significant once the project has more than a handful of files. If you're regularly working in the same codebase, the integration pays off more than the model quality difference costs you.
+
 ---
 
 ## How it works
