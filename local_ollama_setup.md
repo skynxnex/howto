@@ -66,16 +66,23 @@ The model quality is lower than frontier models, but the tooling advantage becom
 
 ## How it works
 
-[Aider](https://aider.chat) is an open-source AI coding assistant that runs in your terminal. It works with any OpenAI-compatible API — including [Ollama](https://ollama.com), which lets you run LLMs locally.
+[Ollama](https://ollama.com) runs AI models on a machine with a GPU and exposes them over the network. A coding tool on your laptop connects to it and uses those models to read, edit, and reason about your code.
 
 ```
 [ Your laptop ]  ──── local network ────  [ GPU machine ]
-  aider (terminal)                          ollama
+  coding tool (terminal)                    ollama
   edits your code                           runs the AI models
   no GPU needed                             port 11434
 ```
 
-**Single machine:** Works just as well if you run both on the same computer — just use `http://localhost:11434/v1` as the API base.
+**Single machine:** Works just as well if you run both on the same computer.
+
+There are two client tools covered in this guide:
+
+- **[Aider](https://aider.chat)** — open-source, uses a dual architect/editor model workflow, highly configurable
+- **[Claude Code](https://code.claude.com/docs)** — Anthropic's official CLI, since January 2026 it supports Ollama as a backend via `ollama launch claude`
+
+Both run in your terminal and edit files directly. The server setup is identical for both.
 
 ---
 
