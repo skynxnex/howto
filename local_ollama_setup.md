@@ -1,4 +1,4 @@
-# Running a Local AI Coding Assistant with Aider and Ollama
+# Running a Local AI Coding Assistant with Aider or Claude Code and Ollama
 
 A guide to setting up a fully local, free AI coding assistant — no API subscription required. You run the models yourself on hardware you control.
 
@@ -95,7 +95,7 @@ Both run in your terminal and edit files directly. The server setup is identical
 
 **Client (where you write code):**
 - Any machine — no GPU needed
-- macOS (this guide), but aider works on Linux and Windows too
+- macOS (this guide), but both Aider and Claude Code work on Linux and Windows too
 
 ---
 
@@ -163,11 +163,15 @@ macOS usually doesn't need firewall changes for LAN traffic.
 
 ## Choose and download models
 
-Aider's architect mode uses two models:
+**Aider** uses two models in architect mode:
 - **Architect** — reasons about the problem and proposes a plan
 - **Editor** — writes the actual code based on the plan
 
-You can use the same model for both, or different ones. The models below are good starting points.
+You can use the same model for both, or different ones.
+
+**Claude Code** uses a single model for everything. `phi4:14b` or `qwen3-fast` (see the Claude Code section) are the recommended starting points.
+
+The models below are good starting points for both tools.
 
 **How much VRAM do you need?**
 A Q4_K_M quantized model needs roughly 1 GB per billion parameters. A 14B model needs ~9 GB of VRAM to run fully on GPU. If it doesn't fit, it falls back to CPU which is much slower.
@@ -574,7 +578,7 @@ Bigger isn't always better in practice:
 
 # Part 5: Troubleshooting
 
-**Aider can't connect to Ollama:**
+**Can't connect to Ollama (Aider or Claude Code):**
 ```bash
 curl http://YOUR_SERVER_IP:11434/api/tags
 # If this fails, Ollama isn't reachable — check OLLAMA_HOST and firewall settings
@@ -590,5 +594,14 @@ Make sure `auto-accept-architect: false` is set in `~/.aider.conf.yml`.
 **Aider commits without asking:**
 Make sure `auto-commits: false` is set.
 
-**Model name not found:**
+**Aider: model name not found:**
 Use `ollama list` on the server to see exact model names. The `openai/` prefix in the config is for aider, not for Ollama — the part after `openai/` must match the Ollama model name exactly.
+
+**Claude Code: "does not support tools" error:**
+Not all models support tool calling through Ollama's Anthropic-compatible API. If you see this error, switch to `qwen3-fast` or `phi4:14b`. DeepSeek models in particular do not support tool calling and cannot be used with Claude Code.
+
+**Claude Code: responses are very slow:**
+`qwen3:14b` runs in thinking mode by default, adding minutes of latency. Create the `qwen3-fast` variant with thinking disabled (see the Claude Code setup section).
+
+**Claude Code: still hitting paid API instead of Ollama:**
+If you have an existing Claude Code setup configured for Anthropic or Vertex AI, those settings take priority. Use `~/.claude/settings.local.json` to override them (see the Claude Code setup section).
