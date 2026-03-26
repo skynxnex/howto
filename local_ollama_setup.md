@@ -2,6 +2,40 @@
 
 A guide to setting up a fully local, free AI coding assistant — no API subscription required. You run the models yourself on hardware you control.
 
+## Contents
+
+- [Why bother?](#why-bother)
+- [Is this better than copy-pasting into ChatGPT or Gemini?](#is-this-better-than-copy-pasting-into-chatgpt-or-gemini)
+- [How it works](#how-it-works)
+- [What you need](#what-you-need)
+- [Part 1: Server Setup](#part-1-server-setup)
+  - [Install Ollama](#install-ollama)
+  - [Expose Ollama on your local network](#expose-ollama-on-your-local-network)
+  - [Choose and download models](#choose-and-download-models)
+  - [Find your server's IP address](#find-your-servers-ip-address)
+- [Part 2: Client Setup (Mac)](#part-2-client-setup-mac)
+  - [Install Aider](#install-aider)
+  - [Configure Aider](#configure-aider)
+  - [Create a global instructions file](#create-a-global-instructions-file)
+  - [Add a shell alias](#add-a-shell-alias)
+- [Alternative Client: Claude Code via Ollama](#alternative-client-claude-code-via-ollama)
+  - [Install](#install)
+  - [Launch](#launch)
+  - [Recommended: create qwen3-fast before launching](#recommended-create-qwen3-fast-before-launching)
+  - [Known limitations](#known-limitations)
+  - [Note: conflict with existing Claude Code setups](#note-conflict-with-existing-claude-code-setups)
+- [Part 3: Usage](#part-3-usage)
+  - [Aider](#aider)
+  - [Claude Code](#claude-code)
+- [Part 4: Choosing the Right Models](#part-4-choosing-the-right-models)
+  - [Local vs paid: the honest comparison](#local-vs-paid-the-honest-comparison)
+  - [The key local tradeoff](#the-key-local-tradeoff)
+  - [On thinking mode](#on-thinking-mode)
+  - [On model size](#on-model-size)
+- [Part 5: Troubleshooting](#part-5-troubleshooting)
+
+---
+
 ## Why bother?
 
 Paid AI APIs (Claude, GPT-4, etc.) are powerful but cost money and send your code to external servers. This setup lets you:
